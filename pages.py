@@ -831,6 +831,27 @@ a{color:inherit;text-decoration:none}
 <body>
 <div class="toast" id="toast"></div>
 
+<!-- مودال بروزرسانی -->
+<div class="modal-bg" id="modal-update" style="z-index:9999">
+  <div class="modal-v2" style="max-width:460px">
+    <div class="modal-v2-head" style="background:linear-gradient(155deg,rgba(59,130,246,.16) 0%,transparent 65%)">
+      <button class="modal-v2-close" onclick="closeModal('modal-update')"><i class="ti ti-x"></i></button>
+      <div class="modal-v2-icon" style="background:linear-gradient(135deg,var(--accent),var(--accent2))"><i class="ti ti-cloud-download"></i></div>
+      <div class="modal-v2-title">بروزرسانی جدید موجود است</div>
+      <div class="modal-v2-sub">نسخه‌ی جدید <span id="update-modal-version">—</span> آماده نصب است</div>
+    </div>
+    <div class="modal-v2-body">
+      <div class="cl" style="margin-top:0">
+        <i class="ti ti-info-circle"></i>
+        <span id="update-modal-desc">توضیحات بروزرسانی...</span>
+      </div>
+      <div class="modal-v2-footer">
+        <button class="btn btn-o" onclick="dismissUpdate()" style="flex:.6">انصراف</button>
+        <button class="btn btn-p" onclick="startUpdateFromModal()" style="flex:1;justify-content:center"><i class="ti ti-download"></i> نصب بروزرسانی</button>
+      </div>
+    </div>
+  </div>
+</div>
 <!-- ══════ اطلاعیه رسمی مالکیت معنوی ══════ -->
 <div class="modal-bg" id="modal-copyright-notice" style="z-index:9999">
   <div class="modal-v2" style="max-width:460px">
@@ -1436,6 +1457,19 @@ a{color:inherit;text-decoration:none}
 </main>
 <script>
 let isDark=localStorage.getItem('rvg-theme')!=='light';
+let updateAvailable = false;
+let updateVersion = '';
+let updateDescription = '';
+
+function dismissUpdate() {
+  sessionStorage.setItem('rvg-update-dismissed', 'true');
+  closeModal('modal-update');
+}
+
+function startUpdateFromModal() {
+  closeModal('modal-update');
+  startUpdate(); // تابع موجود
+}
 function applyTheme(dark){
   document.documentElement.setAttribute('data-theme',dark?'dark':'light');
   const icon=dark?'ti-sun':'ti-moon',label=dark?'تم روشن':'تم تاریک';
@@ -2162,26 +2196,46 @@ async function sendSupportMsg(){
   inp.disabled = false;
   inp.focus();
 }
-document.addEventListener('DOMContentLoaded',async()=>{
-  openModal('modal-copyright-notice');
+document.addEventListener('DOMContentLoaded', async () => {
   await checkAuth();
   initCharts();
-  document.getElementById('set-host').textContent=location.host;
-  document.getElementById('sub-all-url')&&(document.getElementById('sub-all-url').textContent=location.protocol+'//'+location.host+'/sub-all');
-  fetchStats();fetchDefaultVless();loadLinks();loadSubs();
+  document.getElementById('set-host').textContent = location.host;
+  document.getElementById('sub-all-url') && (document.getElementById('sub-all-url').textContent = location.protocol + '//' + location.host + '/sub-all');
+  
+  // ابتدا نسخه را بررسی کن
+  await loadVersion();
+  
+  // تصمیم‌گیری برای نمایش مودال
+  const updateDismissed = sessionStorage.getItem('rvg-update-dismissed') === 'true';
+  if (updateAvailable && !updateDismissed) {
+    // پر کردن اطلاعات مودال بروزرسانی
+    document.getElementById('update-modal-version').textContent = updateVersion;
+    document.getElementById('update-modal-desc').textContent = updateDescription;
+    openModal('modal-update');
+  } else {
+    // اگر بروزرسانی موجود نیست یا کاربر انصراف داده، مودال کپی‌رایت نمایش داده شود
+    openModal('modal-copyright-notice');
+  }
+
+  // بقیه‌ی کدهای اولیه
+  fetchStats();
+  fetchDefaultVless();
+  loadLinks();
+  loadSubs();
   loadAnnouncements();
   loadSupportMsgs();
-  setInterval(fetchStats,2000);
-  setInterval(()=>{
-    if(document.getElementById('pg-links').classList.contains('on'))loadLinks();
-    if(document.getElementById('pg-subgroups').classList.contains('on'))loadSubs();
-    if(document.getElementById('pg-subscriptions').classList.contains('on'))loadSubsPage();
-    if(document.getElementById('pg-connections').classList.contains('on'))loadConns();
-    if(document.getElementById('pg-logs').classList.contains('on'))loadActivity();
-    if(document.getElementById('pg-support').classList.contains('on'))loadSupportMsgs();
+
+  setInterval(fetchStats, 2000);
+  setInterval(() => {
+    if (document.getElementById('pg-links').classList.contains('on')) loadLinks();
+    if (document.getElementById('pg-subgroups').classList.contains('on')) loadSubs();
+    if (document.getElementById('pg-subscriptions').classList.contains('on')) loadSubsPage();
+    if (document.getElementById('pg-connections').classList.contains('on')) loadConns();
+    if (document.getElementById('pg-logs').classList.contains('on')) loadActivity();
+    if (document.getElementById('pg-support').classList.contains('on')) loadSupportMsgs();
     loadVersion();
-  },5000);
-  setInterval(loadAnnouncements,3000);
+  }, 5000);
+  setInterval(loadAnnouncements, 3000);
 });
 
 function timeAgoFa(ts){
@@ -2195,7 +2249,7 @@ function timeAgoFa(ts){
 
 async function loadVersion(){
   try{
-    const r=await authF('/api/version'),d=await r.json();
+    const r=await authF('/api/version'), d=await r.json();
     const cur=d.current||{}, lat=d.latest||{};
 
     document.getElementById('ver-current').textContent=cur.version||'—';
@@ -2210,18 +2264,28 @@ async function loadVersion(){
       badge.innerHTML='<span class="upd-pill upd-pill-amber"><i class="ti ti-alert-triangle"></i> '+esc(lat.error)+'</span>';
       latestCard.style.display='none';
       nb.style.display='none';
-    }else if(d.update_available){
+      updateAvailable = false;
+    } else if(d.update_available){
       badge.innerHTML='<span class="upd-pill upd-pill-amber"><span class="upd-dot"></span> بروزرسانی جدید موجود است</span>';
       document.getElementById('ver-latest-num').textContent=lat.version||'—';
       document.getElementById('ver-latest-desc').textContent=lat.description||'بدون توضیحات';
       latestCard.style.display='flex';
-      nb.style.display='inline-flex';nb.textContent='1';
-    }else{
+      nb.style.display='inline-flex';
+      nb.textContent='1';
+      // تنظیم متغیرهای سراسری برای مودال
+      updateAvailable = true;
+      updateVersion = lat.version || '—';
+      updateDescription = lat.description || 'بدون توضیحات';
+    } else {
       badge.innerHTML='<span class="upd-pill upd-pill-green"><i class="ti ti-circle-check"></i> پنل بروز است</span>';
       latestCard.style.display='none';
       nb.style.display='none';
+      updateAvailable = false;
     }
-  }catch(e){console.error(e)}
+  } catch(e) {
+    console.error(e);
+    updateAvailable = false;
+  }
   loadUpdateHistory();
 }
 
