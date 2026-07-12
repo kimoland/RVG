@@ -396,3 +396,4 @@ async def perform_update() -> bool:
         return False
     finally:
         update_state["running"] = False
+ 
